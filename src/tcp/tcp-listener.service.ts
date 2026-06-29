@@ -97,20 +97,24 @@ export class TcpListenerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private safeWrite(socket: net.Socket, data: string): void {
+    if (!socket.destroyed && socket.writable) {
+      try {
+        socket.write(data);
+      } catch {
+        // client disconnected before we could respond — not an error
+      }
+    }
+  }
+
   private async dispatch(socket: net.Socket, raw: string): Promise<void> {
     try {
       const result = await this.tmiService.processRawString(raw.trimEnd());
-      const response = result + '\n';
-      if (!socket.destroyed) {
-        socket.write(response);
-      }
+      this.safeWrite(socket, JSON.stringify(result) + '\n');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Failed to process message: ${msg}`);
-      const errResponse = JSON.stringify({ error: msg }) + '\n';
-      if (!socket.destroyed) {
-        socket.write(errResponse);
-      }
+      this.safeWrite(socket, JSON.stringify({ error: msg }) + '\n');
     }
   }
 }

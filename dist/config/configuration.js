@@ -9,5 +9,12 @@ exports.default = () => ({
     timezoneOffset: process.env.TIMEZONE_OFFSET ?? '+05:00',
     authenticated: process.env.AUTHENTICATED === 'true',
     authToken: process.env.AUTH_TOKEN ?? '',
+    dbHost: process.env.DB_HOST ?? 'localhost',
+    dbPort: parseInt(process.env.DB_PORT ?? '15432', 10),
+    dbUser: process.env.DB_USER ?? 'postgres',
+    dbPassword: process.env.DB_PASSWORD ?? '',
+    dbName: process.env.DB_NAME ?? 'evaluation',
+    pollTimeoutMs: parseInt(process.env.POLL_TIMEOUT_MS ?? '10000', 10),
+    pollIntervalMs: parseInt(process.env.POLL_INTERVAL_MS ?? '500', 10),
 });
 //# sourceMappingURL=configuration.js.map

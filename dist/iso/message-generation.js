@@ -19,8 +19,12 @@ var Fields;
     Fields[Fields["RECEIVER_ACCOUNT"] = 12] = "RECEIVER_ACCOUNT";
     Fields[Fields["REPORTING_CODE"] = 13] = "REPORTING_CODE";
 })(Fields || (exports.Fields = Fields = {}));
+function safeDate(isoDateString) {
+    const d = new Date(isoDateString);
+    return isNaN(d.getTime()) ? new Date() : d;
+}
 function adjustInMilliseconds(isoDateString, milliseconds) {
-    const date = new Date(isoDateString);
+    const date = safeDate(isoDateString);
     date.setTime(date.getTime() - milliseconds);
     return date.toISOString();
 }
@@ -68,8 +72,8 @@ const getPain001FromColumns = (columns, tenantId) => {
                     },
                 },
                 ReqdExctnDt: {
-                    Dt: new Date(columns[Fields.PROCESSING_DATE_TIME]),
-                    DtTm: new Date(columns[Fields.PROCESSING_DATE_TIME]),
+                    Dt: safeDate(columns[Fields.PROCESSING_DATE_TIME]),
+                    DtTm: safeDate(columns[Fields.PROCESSING_DATE_TIME]),
                 },
                 Dbtr: {
                     Nm: columns[Fields.SENDER_NAME],
@@ -189,7 +193,7 @@ const getPain001FromColumns = (columns, tenantId) => {
                                     Amt: 0,
                                     Ccy: columns[Fields.PAYMENT_CURRENCY_CODE],
                                 },
-                                Xprtn: new Date(new Date(columns[Fields.PROCESSING_DATE_TIME]).getTime() + 5 * 60000),
+                                Xprtn: new Date(safeDate(columns[Fields.PROCESSING_DATE_TIME]).getTime() + 5 * 60000),
                             },
                         },
                     },

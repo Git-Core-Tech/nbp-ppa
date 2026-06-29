@@ -14,5 +14,6 @@ export declare class TcpListenerService implements OnModuleInit, OnModuleDestroy
     onModuleDestroy(): void;
     private handleConnection;
     private drainMessages;
+    private safeWrite;
     private dispatch;
 }

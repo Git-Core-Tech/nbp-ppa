@@ -7,5 +7,12 @@ declare const _default: () => {
     timezoneOffset: string;
     authenticated: boolean;
     authToken: string;
+    dbHost: string;
+    dbPort: number;
+    dbUser: string;
+    dbPassword: string;
+    dbName: string;
+    pollTimeoutMs: number;
+    pollIntervalMs: number;
 };
 export default _default;

@@ -21,8 +21,13 @@ export enum Fields {
   REPORTING_CODE = 13,
 }
 
+function safeDate(isoDateString: string): Date {
+  const d = new Date(isoDateString);
+  return isNaN(d.getTime()) ? new Date() : d;
+}
+
 function adjustInMilliseconds(isoDateString: string, milliseconds: number): string {
-  const date = new Date(isoDateString);
+  const date = safeDate(isoDateString);
   date.setTime(date.getTime() - milliseconds);
   return date.toISOString();
 }
@@ -73,8 +78,8 @@ export const getPain001FromColumns = (columns: string[], tenantId: string): Pain
           },
         },
         ReqdExctnDt: {
-          Dt: new Date(columns[Fields.PROCESSING_DATE_TIME]),
-          DtTm: new Date(columns[Fields.PROCESSING_DATE_TIME]),
+          Dt: safeDate(columns[Fields.PROCESSING_DATE_TIME]),
+          DtTm: safeDate(columns[Fields.PROCESSING_DATE_TIME]),
         },
         Dbtr: {
           Nm: columns[Fields.SENDER_NAME],
@@ -194,7 +199,7 @@ export const getPain001FromColumns = (columns: string[], tenantId: string): Pain
                   Amt: 0,
                   Ccy: columns[Fields.PAYMENT_CURRENCY_CODE],
                 },
-                Xprtn: new Date(new Date(columns[Fields.PROCESSING_DATE_TIME]).getTime() + 5 * 60000),
+                Xprtn: new Date(safeDate(columns[Fields.PROCESSING_DATE_TIME]).getTime() + 5 * 60000),
               },
             },
           },

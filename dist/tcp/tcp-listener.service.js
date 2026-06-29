@@ -81,21 +81,24 @@ let TcpListenerService = TcpListenerService_1 = class TcpListenerService {
             return { complete, remaining };
         }
     }
+    safeWrite(socket, data) {
+        if (!socket.destroyed && socket.writable) {
+            try {
+                socket.write(data);
+            }
+            catch {
+            }
+        }
+    }
     async dispatch(socket, raw) {
         try {
             const result = await this.tmiService.processRawString(raw.trimEnd());
-            const response = result + '\n';
-            if (!socket.destroyed) {
-                socket.write(response);
-            }
+            this.safeWrite(socket, JSON.stringify(result) + '\n');
         }
         catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             this.logger.error(`Failed to process message: ${msg}`);
-            const errResponse = JSON.stringify({ error: msg }) + '\n';
-            if (!socket.destroyed) {
-                socket.write(errResponse);
-            }
+            this.safeWrite(socket, JSON.stringify({ error: msg }) + '\n');
         }
     }
 };

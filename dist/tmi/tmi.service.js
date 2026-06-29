@@ -19,7 +19,7 @@ let TmiService = TmiService_1 = class TmiService {
         this.logger = new common_1.Logger(TmiService_1.name);
     }
     async processRawString(raw) {
-        this.logger.log(`Received: ${raw}`);
+        this.logger.log(`Received (${raw.length} bytes): ${raw}`);
         return raw;
     }
 };
