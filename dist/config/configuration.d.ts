@@ -1,5 +1,7 @@
 declare const _default: () => {
-    port: number;
+    tcpPort: number;
+    tcpHost: string;
+    msgLength: number;
     tmsEndpoint: string;
     tenantId: string;
     timezoneOffset: string;

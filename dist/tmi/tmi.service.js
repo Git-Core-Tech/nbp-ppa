@@ -15,6 +15,7 @@ const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const axios_1 = require("axios");
 const message_generation_1 = require("../iso/message-generation");
+const tmi_parser_1 = require("../tcp/tmi-parser");
 let TmiService = TmiService_1 = class TmiService {
     constructor(configService) {
         this.configService = configService;
@@ -26,11 +27,64 @@ let TmiService = TmiService_1 = class TmiService {
         const authToken = this.configService.get('authToken', '');
         this.authHeader = authenticated && authToken ? `Bearer ${authToken}` : undefined;
     }
-    async processTransaction(payload) {
-        console.log(payload);
-        return payload;
+    async processRawString(raw) {
+        this.logger.debug(`Raw message received (${raw.length} bytes)`);
+        const parsed = (0, tmi_parser_1.parseTmi1910)(raw);
+        this.logger.debug(`Parsed txnid=${parsed.trs_txnid_1} amount=${parsed.trs_amount_pan} ${parsed.trs_curr_pan}`);
+        return this.process(this.buildColumnsFromParsed(parsed));
     }
-    buildColumns(dto) {
+    async processTransaction(dto) {
+        return this.process(this.buildColumnsFromDto(dto));
+    }
+    async processRawBody(raw) {
+        return this.processRawString(raw);
+    }
+    async process(columns) {
+        const transactionId = columns[message_generation_1.Fields.MESSAGE_ID];
+        this.logger.log(`Processing transaction ${transactionId}`);
+        const pain001 = (0, message_generation_1.getPain001FromColumns)(columns, this.tenantId);
+        const pain013 = (0, message_generation_1.getPain013FromPain001)(pain001);
+        const pacs008 = (0, message_generation_1.getPacs008FromPain001)(pain001);
+        const pacs002 = (0, message_generation_1.getPacs002FromColumns)(columns);
+        const { TenantId: _t, ...pacs008Body } = pacs008;
+        const [pacs008Result, pacs002Result] = await Promise.all([
+            this.postToTms('pacs.008.001.10', pacs008Body),
+            this.postToTms('pacs.002.001.12', pacs002),
+        ]);
+        const result = {
+            transactionId,
+            pain001: true,
+            pain013: true,
+            pacs008: pacs008Result,
+            pacs002: pacs002Result,
+        };
+        if (pacs008Result && pacs002Result) {
+            this.logger.log(`Transaction ${transactionId} submitted successfully`);
+        }
+        else {
+            this.logger.warn(`Transaction ${transactionId} partial failure: ${JSON.stringify(result)}`);
+        }
+        return result;
+    }
+    buildColumnsFromParsed(p) {
+        const columns = new Array(14).fill('');
+        columns[message_generation_1.Fields.PROCESSING_DATE_TIME] = this.parseTimestamp(p.remote_time_sent);
+        columns[message_generation_1.Fields.MESSAGE_ID] = p.trs_txnid_1;
+        columns[message_generation_1.Fields.TRANSACTION_TYPE] = 'TRA';
+        columns[message_generation_1.Fields.PAYMENT_CURRENCY_CODE] = p.trs_curr_pan;
+        columns[message_generation_1.Fields.TOTAL_PAYMENT_AMOUNT] = p.trs_amount_pan;
+        columns[message_generation_1.Fields.SENDER_ID] = p.trs_account;
+        columns[message_generation_1.Fields.SENDER_NAME] = p.org_code;
+        columns[message_generation_1.Fields.RECEIVER_ID] = p.destination_account;
+        columns[message_generation_1.Fields.RECEIVER_NAME] = p.secondary_org_code;
+        columns[message_generation_1.Fields.SENDER_AGENT_SPID] = p.org_code;
+        columns[message_generation_1.Fields.RECEIVER_AGENT_SPID] = p.secondary_org_code;
+        columns[message_generation_1.Fields.SENDER_ACCOUNT] = p.trs_account;
+        columns[message_generation_1.Fields.RECEIVER_ACCOUNT] = p.destination_account;
+        columns[message_generation_1.Fields.REPORTING_CODE] = p.trs_mer_code || p.trs_mcc;
+        return columns;
+    }
+    buildColumnsFromDto(dto) {
         const columns = new Array(14).fill('');
         columns[message_generation_1.Fields.PROCESSING_DATE_TIME] = this.parseTimestamp(String(dto.remote_time_sent));
         columns[message_generation_1.Fields.MESSAGE_ID] = dto.trs_txnid_1;
@@ -49,14 +103,8 @@ let TmiService = TmiService_1 = class TmiService {
         return columns;
     }
     parseTimestamp(ts) {
-        const padded = ts.padStart(14, '0');
-        const yyyy = padded.slice(0, 4);
-        const MM = padded.slice(4, 6);
-        const dd = padded.slice(6, 8);
-        const HH = padded.slice(8, 10);
-        const mm = padded.slice(10, 12);
-        const ss = padded.slice(12, 14);
-        return `${yyyy}-${MM}-${dd}T${HH}:${mm}:${ss}${this.timezoneOffset}`;
+        const s = ts.padStart(14, '0');
+        return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}T${s.slice(8, 10)}:${s.slice(10, 12)}:${s.slice(12, 14)}${this.timezoneOffset}`;
     }
     async postToTms(txType, payload) {
         const url = `${this.tmsEndpoint}/v1/evaluate/iso20022/${txType}`;

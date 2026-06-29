@@ -3,7 +3,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import configuration from './config/configuration';
-import { TmiModule } from './tmi/tmi.module';
+import { TcpModule } from './tcp/tcp.module';
 
 @Module({
   imports: [
@@ -13,7 +13,7 @@ import { TmiModule } from './tmi/tmi.module';
       load: [configuration],
       cache: true,
     }),
-    TmiModule,
+    TcpModule,
   ],
 })
 export class AppModule {}

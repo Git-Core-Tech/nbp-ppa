@@ -6,25 +6,17 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AppModule = void 0;
+exports.TcpModule = void 0;
 const common_1 = require("@nestjs/common");
-const config_1 = require("@nestjs/config");
-const configuration_1 = require("./config/configuration");
-const tcp_module_1 = require("./tcp/tcp.module");
-let AppModule = class AppModule {
+const tmi_module_1 = require("../tmi/tmi.module");
+const tcp_listener_service_1 = require("./tcp-listener.service");
+let TcpModule = class TcpModule {
 };
-exports.AppModule = AppModule;
-exports.AppModule = AppModule = __decorate([
+exports.TcpModule = TcpModule;
+exports.TcpModule = TcpModule = __decorate([
     (0, common_1.Module)({
-        imports: [
-            config_1.ConfigModule.forRoot({
-                isGlobal: true,
-                envFilePath: ['.env'],
-                load: [configuration_1.default],
-                cache: true,
-            }),
-            tcp_module_1.TcpModule,
-        ],
+        imports: [tmi_module_1.TmiModule],
+        providers: [tcp_listener_service_1.TcpListenerService],
     })
-], AppModule);
-//# sourceMappingURL=app.module.js.map
+], TcpModule);
+//# sourceMappingURL=tcp.module.js.map

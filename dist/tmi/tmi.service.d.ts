@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { TmiTransactionDto } from './dto/tmi-transaction.dto';
 export interface TransactionResult {
     transactionId: string;
     pain001: boolean;
@@ -14,8 +15,12 @@ export declare class TmiService {
     private readonly timezoneOffset;
     private readonly authHeader;
     constructor(configService: ConfigService);
-    processTransaction(payload: string): Promise<any>;
-    private buildColumns;
+    processRawString(raw: string): Promise<TransactionResult>;
+    processTransaction(dto: TmiTransactionDto): Promise<TransactionResult>;
+    processRawBody(raw: string): Promise<TransactionResult>;
+    private process;
+    private buildColumnsFromParsed;
+    private buildColumnsFromDto;
     private parseTimestamp;
     private postToTms;
 }
