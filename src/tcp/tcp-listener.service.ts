@@ -51,11 +51,18 @@ export class TcpListenerService implements OnModuleInit, OnModuleDestroy {
     let buffer = '';
 
     socket.on('data', async (chunk: Buffer) => {
-      buffer += chunk.toString('latin1'); // latin1 preserves byte values
+      this.logger.log(
+        `Received ${chunk.length} bytes from ${remote}: ${JSON.stringify(chunk.toString('latin1'))}`,
+      );
 
-      // Drain all complete messages from the buffer
+      buffer += chunk.toString('latin1');
+
       const messages = this.drainMessages(buffer);
       buffer = messages.remaining;
+
+      this.logger.log(
+        `Complete messages: ${messages.complete.length}, buffered bytes: ${buffer.length}`,
+      );
 
       for (const msg of messages.complete) {
         await this.dispatch(socket, msg);
@@ -65,7 +72,7 @@ export class TcpListenerService implements OnModuleInit, OnModuleDestroy {
     socket.on('end', () => {
       // Process any remaining buffered bytes when client closes write side
       if (buffer.length > 0) {
-        this.dispatch(socket, buffer).catch(() => {});
+        this.dispatch(socket, buffer).catch(() => { });
         buffer = '';
       }
       this.logger.log(`Client disconnected: ${remote}`);

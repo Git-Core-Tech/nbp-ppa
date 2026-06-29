@@ -46,9 +46,11 @@ let TcpListenerService = TcpListenerService_1 = class TcpListenerService {
         this.logger.log(`Client connected: ${remote}`);
         let buffer = '';
         socket.on('data', async (chunk) => {
+            this.logger.log(`Received ${chunk.length} bytes from ${remote}: ${JSON.stringify(chunk.toString('latin1'))}`);
             buffer += chunk.toString('latin1');
             const messages = this.drainMessages(buffer);
             buffer = messages.remaining;
+            this.logger.log(`Complete messages: ${messages.complete.length}, buffered bytes: ${buffer.length}`);
             for (const msg of messages.complete) {
                 await this.dispatch(socket, msg);
             }
