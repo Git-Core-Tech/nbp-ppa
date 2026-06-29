@@ -1,0 +1,1 @@
+{"version":3,"file":"calculatePrcg.js","sourceRoot":"","sources":["../../src/helpers/calculatePrcg.ts"],"names":[],"mappings":";AAAA,sCAAsC;;;AAEtC;;;;;GAKG;AACI,MAAM,iBAAiB,GAAG,CAAC,SAAiB,EAAU,EAAE;IAC7D,MAAM,OAAO,GAAG,OAAO,CAAC,MAAM,CAAC,MAAM,EAAE,CAAC;IACxC,OAAO,MAAM,CAAC,OAAO,GAAG,SAAS,CAAC,CAAC;AACrC,CAAC,CAAC;AAHW,QAAA,iBAAiB,qBAG5B;AAEF,kBAAe,yBAAiB,CAAC"}
