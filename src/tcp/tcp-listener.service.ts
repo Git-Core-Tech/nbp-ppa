@@ -100,7 +100,7 @@ export class TcpListenerService implements OnModuleInit, OnModuleDestroy {
   private async dispatch(socket: net.Socket, raw: string): Promise<void> {
     try {
       const result = await this.tmiService.processRawString(raw.trimEnd());
-      const response = JSON.stringify(result) + '\n';
+      const response = result + '\n';
       if (!socket.destroyed) {
         socket.write(response);
       }

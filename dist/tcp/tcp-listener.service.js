@@ -84,7 +84,7 @@ let TcpListenerService = TcpListenerService_1 = class TcpListenerService {
     async dispatch(socket, raw) {
         try {
             const result = await this.tmiService.processRawString(raw.trimEnd());
-            const response = JSON.stringify(result) + '\n';
+            const response = result + '\n';
             if (!socket.destroyed) {
                 socket.write(response);
             }
