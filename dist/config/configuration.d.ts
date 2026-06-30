@@ -1,8 +1,11 @@
 declare const _default: () => {
+    port: number;
     tcpPort: number;
     tcpHost: string;
     msgLength: number;
+    tmiInputMode: string;
     tmsEndpoint: string;
+    tmsRequestTimeoutMs: number;
     tenantId: string;
     timezoneOffset: string;
     authenticated: boolean;

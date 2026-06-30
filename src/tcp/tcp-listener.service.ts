@@ -1,40 +1,55 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as net from 'net';
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TmiService } from '../tmi/tmi.service';
+import { TMI_BODY_LENGTH } from '../tmi/tmi-parser';
 
 @Injectable()
 export class TcpListenerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TcpListenerService.name);
-  private server: net.Server;
+  private server?: net.Server;
   private readonly tcpPort: number;
   private readonly tcpHost: string;
-  private readonly msgLength: number;
 
   constructor(
     private readonly tmiService: TmiService,
     private readonly configService: ConfigService,
   ) {
-    this.tcpPort = this.configService.get<number>('tcpPort', 3004);
-    this.tcpHost = this.configService.get<string>('tcpHost', '0.0.0.0');
-    // MSG_LENGTH=0 means newline-delimited mode (useful for testing)
-    this.msgLength = this.configService.get<number>('msgLength', 0);
+    this.tcpPort = Number(
+      this.configService.get<string | number>('tcpPort') ??
+        this.configService.get<string | number>('TCP_PORT') ??
+        3004,
+    );
+
+    this.tcpHost =
+      this.configService.get<string>('tcpHost') ??
+      this.configService.get<string>('TCP_HOST') ??
+      '0.0.0.0';
+
+    if (!Number.isInteger(this.tcpPort) || this.tcpPort <= 0) {
+      throw new Error(`Invalid TCP port: ${this.tcpPort}`);
+    }
   }
 
   onModuleInit(): void {
     this.server = net.createServer((socket) => this.handleConnection(socket));
 
     this.server.listen(this.tcpPort, this.tcpHost, () => {
-      const mode = this.msgLength > 0
-        ? `fixed-length (${this.msgLength} bytes)`
-        : 'newline-delimited';
-      this.logger.log(`TCP server listening on ${this.tcpHost}:${this.tcpPort} [${mode}]`);
+      this.logger.log(
+        `TCP server listening on ${this.tcpHost}:${this.tcpPort} ` +
+          `[Fractals trace -> ${TMI_BODY_LENGTH}-byte TMI body]`,
+      );
     });
 
-    this.server.on('error', (err) => {
-      this.logger.error(`TCP server error: ${err.message}`);
+    this.server.on('error', (error) => {
+      this.logger.error(`TCP server error: ${error.message}`);
     });
   }
 
@@ -48,80 +63,138 @@ export class TcpListenerService implements OnModuleInit, OnModuleDestroy {
     const remote = `${socket.remoteAddress}:${socket.remotePort}`;
     this.logger.log(`Client connected: ${remote}`);
 
-    let buffer = '';
+    let traceBuffer = '';
+    let processingQueue: Promise<void> = Promise.resolve();
 
-    socket.on('data', async (chunk: Buffer) => {
+    socket.on('data', (chunk: Buffer) => {
+      this.logger.log(`Received ${chunk.length} bytes from ${remote}: ${chunk}`);
+
+      traceBuffer += chunk.toString('latin1');
+
+      const messages = this.drainTraceMessages(traceBuffer);
+      traceBuffer = messages.remaining;
+
       this.logger.log(
-        `Received ${chunk.length} bytes from ${remote}: ${JSON.stringify(chunk.toString('latin1'))}`,
+        `Complete TMI messages: ${messages.complete.length}, ` +
+          `remaining trace bytes: ${Buffer.byteLength(traceBuffer, 'latin1')}`,
       );
 
-      buffer += chunk.toString('latin1');
-
-      const messages = this.drainMessages(buffer);
-      buffer = messages.remaining;
-
-      this.logger.log(
-        `Complete messages: ${messages.complete.length}, buffered bytes: ${buffer.length}`,
-      );
-
-      for (const msg of messages.complete) {
-        await this.dispatch(socket, msg);
+      // Keep processing and responses ordered for each socket.
+      for (const message of messages.complete) {
+        processingQueue = processingQueue
+          .then(() => this.dispatch(socket, message))
+          .catch((error: unknown) => {
+            const text = error instanceof Error ? error.message : String(error);
+            this.logger.error(`Processing queue failed [${remote}]: ${text}`);
+          });
       }
     });
 
     socket.on('end', () => {
-      // Process any remaining buffered bytes when client closes write side
-      if (buffer.length > 0) {
-        this.dispatch(socket, buffer).catch(() => { });
-        buffer = '';
+      if (traceBuffer.length > 0) {
+        this.logger.debug(
+          `Ignoring ${Buffer.byteLength(traceBuffer, 'latin1')} ` +
+            'remaining non-payload trace bytes',
+        );
+        traceBuffer = '';
       }
+
       this.logger.log(`Client disconnected: ${remote}`);
     });
 
-    socket.on('error', (err) => {
-      this.logger.error(`Socket error [${remote}]: ${err.message}`);
+    socket.on('error', (error) => {
+      this.logger.error(`Socket error [${remote}]: ${error.message}`);
     });
   }
 
-  private drainMessages(buffer: string): { complete: string[]; remaining: string } {
+  private drainTraceMessages(
+    buffer: string,
+  ): { complete: string[]; remaining: string } {
     const complete: string[] = [];
+    let searchOffset = 0;
 
-    if (this.msgLength > 0) {
-      // Fixed-length framing: slice MSG_LENGTH bytes at a time
-      let offset = 0;
-      while (offset + this.msgLength <= buffer.length) {
-        complete.push(buffer.substring(offset, offset + this.msgLength));
-        offset += this.msgLength;
-      }
-      return { complete, remaining: buffer.substring(offset) };
-    } else {
-      // Newline-delimited framing: split on '\n'
-      const lines = buffer.split('\n');
-      // Last element is the incomplete tail (may be empty)
-      const remaining = lines.pop() ?? '';
-      complete.push(...lines.filter((l) => l.length > 0));
-      return { complete, remaining };
-    }
-  }
+    while (searchOffset < buffer.length) {
+      const searchable = buffer.slice(searchOffset);
+      const headerMatch = /REQUEST>>Length=(\d+)-> ?/.exec(searchable);
 
-  private safeWrite(socket: net.Socket, data: string): void {
-    if (!socket.destroyed && socket.writable) {
-      try {
-        socket.write(data);
-      } catch {
-        // client disconnected before we could respond — not an error
+      if (!headerMatch) {
+        // Preserve a short tail because the header may be split across chunks.
+        const remaining = searchable.length > 512
+          ? searchable.slice(-512)
+          : searchable;
+        return { complete, remaining };
       }
+
+      const headerStart = searchOffset + headerMatch.index;
+      const payloadStart = headerStart + headerMatch[0].length;
+      const expectedLength = Number(headerMatch[1]);
+
+      if (expectedLength !== TMI_BODY_LENGTH) {
+        throw new Error(
+          `Invalid TMI trace length: expected ${TMI_BODY_LENGTH}, ` +
+            `received ${expectedLength}`,
+        );
+      }
+
+      let cursor = payloadStart;
+      let payload = '';
+
+      while (cursor < buffer.length && payload.length < expectedLength) {
+        const character = buffer[cursor++];
+
+        // CR/LF are visual wrapping in the copied Fractals trace.
+        if (character !== '\r' && character !== '\n') {
+          payload += character;
+        }
+      }
+
+      if (payload.length < expectedLength) {
+        return {
+          complete,
+          remaining: buffer.slice(headerStart),
+        };
+      }
+
+      complete.push(payload);
+      searchOffset = cursor;
     }
+
+    return {
+      complete,
+      remaining: buffer.slice(searchOffset),
+    };
   }
 
   private async dispatch(socket: net.Socket, raw: string): Promise<void> {
     try {
-      const result = await this.tmiService.processRawString(raw.trimEnd());
-      this.safeWrite(socket, JSON.stringify(result) + '\n');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Failed to process message: ${msg}`);
-      this.safeWrite(socket, JSON.stringify({ error: msg }) + '\n');
+      const length = Buffer.byteLength(raw, 'latin1');
+      if (length !== TMI_BODY_LENGTH) {
+        throw new Error(
+          `Invalid TMI body length: expected ${TMI_BODY_LENGTH}, received ${length}`,
+        );
+      }
+
+      const parsed = await this.tmiService.processRawString(raw);
+
+      // Step 1 response: JSON is only for confirming all parsed fields.
+      // Replace this in the response-message step with the fixed-width TMI reply.
+      this.safeWrite(socket, `${JSON.stringify(parsed)}\n`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to process message: ${message}`);
+      this.safeWrite(socket, `${JSON.stringify({ error: message })}\n`);
+    }
+  }
+
+  private safeWrite(socket: net.Socket, data: string): void {
+    if (socket.destroyed || !socket.writable) {
+      return;
+    }
+
+    try {
+      socket.write(data);
+    } catch {
+      // The peer disconnected between the writable check and socket.write().
     }
   }
 }

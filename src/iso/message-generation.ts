@@ -22,8 +22,11 @@ export enum Fields {
 }
 
 function safeDate(isoDateString: string): Date {
-  const d = new Date(isoDateString);
-  return isNaN(d.getTime()) ? new Date() : d;
+  const date = new Date(isoDateString);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`Invalid ISO date: ${isoDateString}`);
+  }
+  return date;
 }
 
 function adjustInMilliseconds(isoDateString: string, milliseconds: number): string {
@@ -33,8 +36,11 @@ function adjustInMilliseconds(isoDateString: string, milliseconds: number): stri
 }
 
 function splitName(fullName: string): { first: string; last: string } {
-  const parts = fullName.split(' ');
-  return { first: parts[0] ?? '', last: parts[1] ?? '' };
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  return {
+    first: parts[0] ?? '',
+    last: parts.slice(1).join(' '),
+  };
 }
 
 export const getPain001FromColumns = (columns: string[], tenantId: string): Pain001 => {
@@ -229,7 +235,7 @@ export const getPain013FromPain001 = (pain001: Pain001): Pain013 => {
     TenantId: pain001.TenantId,
     CdtrPmtActvtnReq: {
       GrpHdr: {
-        MsgId: uuidv4().replace('-', ''),
+        MsgId: uuidv4().replace(/-/g, ''),
         CreDtTm: adjustInMilliseconds(pain001.CstmrCdtTrfInitn.GrpHdr.CreDtTm, -1000),
         NbOfTxs: 1,
         InitgPty: {
@@ -339,7 +345,9 @@ export const getPain013FromPain001 = (pain001: Pain001): Pain013 => {
                   CityOfBirth: 'Unknown',
                   CtryOfBirth: 'ZZ',
                 },
-                Othr: [pain001.CstmrCdtTrfInitn.GrpHdr.InitgPty.Id.PrvtId.Othr[0]],
+                Othr: [
+                  pain001.CstmrCdtTrfInitn.PmtInf.CdtTrfTxInf.Cdtr.Id.PrvtId.Othr[0],
+                ],
               },
             },
           },
@@ -394,7 +402,7 @@ export const getPacs008FromPain001 = (pain001: Pain001): Pacs008 => {
     TenantId: pain001.TenantId,
     FIToFICstmrCdtTrf: {
       GrpHdr: {
-        MsgId: uuidv4().replace('-', ''),
+        MsgId: uuidv4().replace(/-/g, ''),
         CreDtTm: adjustInMilliseconds(pain001.CstmrCdtTrfInitn.GrpHdr.CreDtTm, -1000),
         NbOfTxs: pain001.CstmrCdtTrfInitn.GrpHdr.NbOfTxs,
         SttlmInf: { SttlmMtd: 'CLRG' },
@@ -513,7 +521,7 @@ export const getPacs002FromColumns = (columns: string[]): Omit<Pacs002, 'TenantI
     TxTp: 'pacs.002.001.12',
     FIToFIPmtSts: {
       GrpHdr: {
-        MsgId: uuidv4().replace('-', ''),
+        MsgId: uuidv4().replace(/-/g, ''),
         CreDtTm: columns[Fields.PROCESSING_DATE_TIME],
       },
       TxInfAndSts: {
@@ -546,7 +554,7 @@ export const getPacs002FromColumns = (columns: string[]): Omit<Pacs002, 'TenantI
             },
           },
         ],
-        AccptncDtTm: new Date(),
+        AccptncDtTm: safeDate(columns[Fields.PROCESSING_DATE_TIME]),
         InstgAgt: {
           FinInstnId: {
             ClrSysMmbId: { MmbId: columns[Fields.SENDER_AGENT_SPID] },

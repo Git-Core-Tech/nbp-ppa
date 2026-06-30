@@ -8,12 +8,15 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TmiModule = void 0;
 const common_1 = require("@nestjs/common");
+const config_1 = require("@nestjs/config");
+const iso_module_1 = require("../iso/iso.module");
 const tmi_service_1 = require("./tmi.service");
 let TmiModule = class TmiModule {
 };
 exports.TmiModule = TmiModule;
 exports.TmiModule = TmiModule = __decorate([
     (0, common_1.Module)({
+        imports: [config_1.ConfigModule, iso_module_1.IsoModule],
         providers: [tmi_service_1.TmiService],
         exports: [tmi_service_1.TmiService],
     })

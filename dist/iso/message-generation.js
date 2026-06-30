@@ -20,8 +20,11 @@ var Fields;
     Fields[Fields["REPORTING_CODE"] = 13] = "REPORTING_CODE";
 })(Fields || (exports.Fields = Fields = {}));
 function safeDate(isoDateString) {
-    const d = new Date(isoDateString);
-    return isNaN(d.getTime()) ? new Date() : d;
+    const date = new Date(isoDateString);
+    if (Number.isNaN(date.getTime())) {
+        throw new Error(`Invalid ISO date: ${isoDateString}`);
+    }
+    return date;
 }
 function adjustInMilliseconds(isoDateString, milliseconds) {
     const date = safeDate(isoDateString);
@@ -29,8 +32,11 @@ function adjustInMilliseconds(isoDateString, milliseconds) {
     return date.toISOString();
 }
 function splitName(fullName) {
-    const parts = fullName.split(' ');
-    return { first: parts[0] ?? '', last: parts[1] ?? '' };
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    return {
+        first: parts[0] ?? '',
+        last: parts.slice(1).join(' '),
+    };
 }
 const getPain001FromColumns = (columns, tenantId) => {
     const end2endID = columns[Fields.MESSAGE_ID];
@@ -222,7 +228,7 @@ const getPain013FromPain001 = (pain001) => {
         TenantId: pain001.TenantId,
         CdtrPmtActvtnReq: {
             GrpHdr: {
-                MsgId: (0, uuid_1.v4)().replace('-', ''),
+                MsgId: (0, uuid_1.v4)().replace(/-/g, ''),
                 CreDtTm: adjustInMilliseconds(pain001.CstmrCdtTrfInitn.GrpHdr.CreDtTm, -1000),
                 NbOfTxs: 1,
                 InitgPty: {
@@ -332,7 +338,9 @@ const getPain013FromPain001 = (pain001) => {
                                     CityOfBirth: 'Unknown',
                                     CtryOfBirth: 'ZZ',
                                 },
-                                Othr: [pain001.CstmrCdtTrfInitn.GrpHdr.InitgPty.Id.PrvtId.Othr[0]],
+                                Othr: [
+                                    pain001.CstmrCdtTrfInitn.PmtInf.CdtTrfTxInf.Cdtr.Id.PrvtId.Othr[0],
+                                ],
                             },
                         },
                     },
@@ -386,7 +394,7 @@ const getPacs008FromPain001 = (pain001) => {
         TenantId: pain001.TenantId,
         FIToFICstmrCdtTrf: {
             GrpHdr: {
-                MsgId: (0, uuid_1.v4)().replace('-', ''),
+                MsgId: (0, uuid_1.v4)().replace(/-/g, ''),
                 CreDtTm: adjustInMilliseconds(pain001.CstmrCdtTrfInitn.GrpHdr.CreDtTm, -1000),
                 NbOfTxs: pain001.CstmrCdtTrfInitn.GrpHdr.NbOfTxs,
                 SttlmInf: { SttlmMtd: 'CLRG' },
@@ -504,7 +512,7 @@ const getPacs002FromColumns = (columns) => {
         TxTp: 'pacs.002.001.12',
         FIToFIPmtSts: {
             GrpHdr: {
-                MsgId: (0, uuid_1.v4)().replace('-', ''),
+                MsgId: (0, uuid_1.v4)().replace(/-/g, ''),
                 CreDtTm: columns[Fields.PROCESSING_DATE_TIME],
             },
             TxInfAndSts: {
@@ -537,7 +545,7 @@ const getPacs002FromColumns = (columns) => {
                         },
                     },
                 ],
-                AccptncDtTm: new Date(),
+                AccptncDtTm: safeDate(columns[Fields.PROCESSING_DATE_TIME]),
                 InstgAgt: {
                     FinInstnId: {
                         ClrSysMmbId: { MmbId: columns[Fields.SENDER_AGENT_SPID] },

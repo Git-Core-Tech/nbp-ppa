@@ -5,15 +5,14 @@ export declare class TcpListenerService implements OnModuleInit, OnModuleDestroy
     private readonly tmiService;
     private readonly configService;
     private readonly logger;
-    private server;
+    private server?;
     private readonly tcpPort;
     private readonly tcpHost;
-    private readonly msgLength;
     constructor(tmiService: TmiService, configService: ConfigService);
     onModuleInit(): void;
     onModuleDestroy(): void;
     private handleConnection;
-    private drainMessages;
-    private safeWrite;
+    private drainTraceMessages;
     private dispatch;
+    private safeWrite;
 }

@@ -15,25 +15,31 @@ const net = require("net");
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const tmi_service_1 = require("../tmi/tmi.service");
+const tmi_parser_1 = require("../tmi/tmi-parser");
 let TcpListenerService = TcpListenerService_1 = class TcpListenerService {
     constructor(tmiService, configService) {
         this.tmiService = tmiService;
         this.configService = configService;
         this.logger = new common_1.Logger(TcpListenerService_1.name);
-        this.tcpPort = this.configService.get('tcpPort', 3004);
-        this.tcpHost = this.configService.get('tcpHost', '0.0.0.0');
-        this.msgLength = this.configService.get('msgLength', 0);
+        this.tcpPort = Number(this.configService.get('tcpPort') ??
+            this.configService.get('TCP_PORT') ??
+            3004);
+        this.tcpHost =
+            this.configService.get('tcpHost') ??
+                this.configService.get('TCP_HOST') ??
+                '0.0.0.0';
+        if (!Number.isInteger(this.tcpPort) || this.tcpPort <= 0) {
+            throw new Error(`Invalid TCP port: ${this.tcpPort}`);
+        }
     }
     onModuleInit() {
         this.server = net.createServer((socket) => this.handleConnection(socket));
         this.server.listen(this.tcpPort, this.tcpHost, () => {
-            const mode = this.msgLength > 0
-                ? `fixed-length (${this.msgLength} bytes)`
-                : 'newline-delimited';
-            this.logger.log(`TCP server listening on ${this.tcpHost}:${this.tcpPort} [${mode}]`);
+            this.logger.log(`TCP server listening on ${this.tcpHost}:${this.tcpPort} ` +
+                `[Fractals trace -> ${tmi_parser_1.TMI_BODY_LENGTH}-byte TMI body]`);
         });
-        this.server.on('error', (err) => {
-            this.logger.error(`TCP server error: ${err.message}`);
+        this.server.on('error', (error) => {
+            this.logger.error(`TCP server error: ${error.message}`);
         });
     }
     onModuleDestroy() {
@@ -44,63 +50,100 @@ let TcpListenerService = TcpListenerService_1 = class TcpListenerService {
     handleConnection(socket) {
         const remote = `${socket.remoteAddress}:${socket.remotePort}`;
         this.logger.log(`Client connected: ${remote}`);
-        let buffer = '';
-        socket.on('data', async (chunk) => {
-            this.logger.log(`Received ${chunk.length} bytes from ${remote}: ${JSON.stringify(chunk.toString('latin1'))}`);
-            buffer += chunk.toString('latin1');
-            const messages = this.drainMessages(buffer);
-            buffer = messages.remaining;
-            this.logger.log(`Complete messages: ${messages.complete.length}, buffered bytes: ${buffer.length}`);
-            for (const msg of messages.complete) {
-                await this.dispatch(socket, msg);
+        let traceBuffer = '';
+        let processingQueue = Promise.resolve();
+        socket.on('data', (chunk) => {
+            this.logger.log(`Received ${chunk.length} bytes from ${remote}: ${chunk}`);
+            traceBuffer += chunk.toString('latin1');
+            const messages = this.drainTraceMessages(traceBuffer);
+            traceBuffer = messages.remaining;
+            this.logger.log(`Complete TMI messages: ${messages.complete.length}, ` +
+                `remaining trace bytes: ${Buffer.byteLength(traceBuffer, 'latin1')}`);
+            for (const message of messages.complete) {
+                processingQueue = processingQueue
+                    .then(() => this.dispatch(socket, message))
+                    .catch((error) => {
+                    const text = error instanceof Error ? error.message : String(error);
+                    this.logger.error(`Processing queue failed [${remote}]: ${text}`);
+                });
             }
         });
         socket.on('end', () => {
-            if (buffer.length > 0) {
-                this.dispatch(socket, buffer).catch(() => { });
-                buffer = '';
+            if (traceBuffer.length > 0) {
+                this.logger.debug(`Ignoring ${Buffer.byteLength(traceBuffer, 'latin1')} ` +
+                    'remaining non-payload trace bytes');
+                traceBuffer = '';
             }
             this.logger.log(`Client disconnected: ${remote}`);
         });
-        socket.on('error', (err) => {
-            this.logger.error(`Socket error [${remote}]: ${err.message}`);
+        socket.on('error', (error) => {
+            this.logger.error(`Socket error [${remote}]: ${error.message}`);
         });
     }
-    drainMessages(buffer) {
+    drainTraceMessages(buffer) {
         const complete = [];
-        if (this.msgLength > 0) {
-            let offset = 0;
-            while (offset + this.msgLength <= buffer.length) {
-                complete.push(buffer.substring(offset, offset + this.msgLength));
-                offset += this.msgLength;
+        let searchOffset = 0;
+        while (searchOffset < buffer.length) {
+            const searchable = buffer.slice(searchOffset);
+            const headerMatch = /REQUEST>>Length=(\d+)-> ?/.exec(searchable);
+            if (!headerMatch) {
+                const remaining = searchable.length > 512
+                    ? searchable.slice(-512)
+                    : searchable;
+                return { complete, remaining };
             }
-            return { complete, remaining: buffer.substring(offset) };
-        }
-        else {
-            const lines = buffer.split('\n');
-            const remaining = lines.pop() ?? '';
-            complete.push(...lines.filter((l) => l.length > 0));
-            return { complete, remaining };
-        }
-    }
-    safeWrite(socket, data) {
-        if (!socket.destroyed && socket.writable) {
-            try {
-                socket.write(data);
+            const headerStart = searchOffset + headerMatch.index;
+            const payloadStart = headerStart + headerMatch[0].length;
+            const expectedLength = Number(headerMatch[1]);
+            if (expectedLength !== tmi_parser_1.TMI_BODY_LENGTH) {
+                throw new Error(`Invalid TMI trace length: expected ${tmi_parser_1.TMI_BODY_LENGTH}, ` +
+                    `received ${expectedLength}`);
             }
-            catch {
+            let cursor = payloadStart;
+            let payload = '';
+            while (cursor < buffer.length && payload.length < expectedLength) {
+                const character = buffer[cursor++];
+                if (character !== '\r' && character !== '\n') {
+                    payload += character;
+                }
             }
+            if (payload.length < expectedLength) {
+                return {
+                    complete,
+                    remaining: buffer.slice(headerStart),
+                };
+            }
+            complete.push(payload);
+            searchOffset = cursor;
         }
+        return {
+            complete,
+            remaining: buffer.slice(searchOffset),
+        };
     }
     async dispatch(socket, raw) {
         try {
-            const result = await this.tmiService.processRawString(raw.trimEnd());
-            this.safeWrite(socket, JSON.stringify(result) + '\n');
+            const length = Buffer.byteLength(raw, 'latin1');
+            if (length !== tmi_parser_1.TMI_BODY_LENGTH) {
+                throw new Error(`Invalid TMI body length: expected ${tmi_parser_1.TMI_BODY_LENGTH}, received ${length}`);
+            }
+            const parsed = await this.tmiService.processRawString(raw);
+            this.safeWrite(socket, `${JSON.stringify(parsed)}\n`);
         }
-        catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            this.logger.error(`Failed to process message: ${msg}`);
-            this.safeWrite(socket, JSON.stringify({ error: msg }) + '\n');
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.logger.error(`Failed to process message: ${message}`);
+            this.safeWrite(socket, `${JSON.stringify({ error: message })}\n`);
+        }
+    }
+    safeWrite(socket, data) {
+        if (socket.destroyed || !socket.writable) {
+            return;
+        }
+        try {
+            socket.write(data);
+        }
+        catch {
         }
     }
 };
