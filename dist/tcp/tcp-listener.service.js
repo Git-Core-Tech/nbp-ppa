@@ -76,12 +76,24 @@ let TcpListenerService = TcpListenerService_1 = class TcpListenerService {
             }
             return { complete, remaining: buffer.substring(offset) };
         }
-        else {
-            const lines = buffer.split('\n');
-            const remaining = lines.pop() ?? '';
-            complete.push(...lines.filter((l) => l.length > 0));
-            return { complete, remaining };
+        if (buffer.includes('0371')) {
+            let offset = 0;
+            while (offset < buffer.length) {
+                const markerPos = buffer.indexOf('0371', offset);
+                if (markerPos === -1)
+                    break;
+                if (markerPos + 1365 > buffer.length) {
+                    return { complete, remaining: buffer.substring(markerPos) };
+                }
+                complete.push(buffer.substring(markerPos, markerPos + 1365));
+                offset = markerPos + 1365;
+            }
+            return { complete, remaining: buffer.substring(offset) };
         }
+        const lines = buffer.split('\n');
+        const remaining = lines.pop() ?? '';
+        complete.push(...lines.filter((l) => l.length > 0));
+        return { complete, remaining };
     }
     safeWrite(socket, data) {
         if (!socket.destroyed && socket.writable) {

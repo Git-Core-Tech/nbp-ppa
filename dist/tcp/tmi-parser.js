@@ -158,9 +158,10 @@ function parseTmi1910(raw) {
 }
 function extractValue(raw, type) {
     switch (type) {
-        case 'varchar':
         case 'textdate':
-            return raw.trim();
+            return raw.replace(/^[\s.]+|[\s.]+$/g, '');
+        case 'varchar':
+            return raw.replace(/^[\s.]+|[\s.]+$/g, '');
         case 'number': {
             const n = parseInt(raw, 10);
             return isNaN(n) ? '' : String(n);

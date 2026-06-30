@@ -178,9 +178,12 @@ export function parseTmi1910(raw: string): ParsedTmi {
 
 function extractValue(raw: string, type: FieldDef['type']): string {
   switch (type) {
-    case 'varchar':
     case 'textdate':
-      return raw.trim();
+      return raw.replace(/^[\s.]+|[\s.]+$/g, '');
+
+    case 'varchar':
+      // TMI pads varchar fields with leading/trailing dots and spaces
+      return raw.replace(/^[\s.]+|[\s.]+$/g, '');
 
     case 'number': {
       const n = parseInt(raw, 10);

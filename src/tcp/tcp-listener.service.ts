@@ -94,14 +94,30 @@ export class TcpListenerService implements OnModuleInit, OnModuleDestroy {
         offset += this.msgLength;
       }
       return { complete, remaining: buffer.substring(offset) };
-    } else {
-      // Newline-delimited framing: split on '\n'
-      const lines = buffer.split('\n');
-      // Last element is the incomplete tail (may be empty)
-      const remaining = lines.pop() ?? '';
-      complete.push(...lines.filter((l) => l.length > 0));
-      return { complete, remaining };
     }
+
+    // TMI1910 sync-marker mode: scan for '0371' and extract 1365-byte frames.
+    // Handles mixed streams where non-TMI data may precede/follow TMI messages.
+    if (buffer.includes('0371')) {
+      let offset = 0;
+      while (offset < buffer.length) {
+        const markerPos = buffer.indexOf('0371', offset);
+        if (markerPos === -1) break;
+        if (markerPos + 1365 > buffer.length) {
+          // Incomplete frame — keep from marker onward
+          return { complete, remaining: buffer.substring(markerPos) };
+        }
+        complete.push(buffer.substring(markerPos, markerPos + 1365));
+        offset = markerPos + 1365;
+      }
+      return { complete, remaining: buffer.substring(offset) };
+    }
+
+    // Newline-delimited framing: split on '\n'
+    const lines = buffer.split('\n');
+    const remaining = lines.pop() ?? '';
+    complete.push(...lines.filter((l) => l.length > 0));
+    return { complete, remaining };
   }
 
   private safeWrite(socket: net.Socket, data: string): void {
