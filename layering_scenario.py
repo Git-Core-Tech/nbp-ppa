@@ -15,7 +15,10 @@ from datetime import datetime, timedelta
 
 URL1 = "http://10.0.110.7:7033/nbpl/queueforwarding/"
 SHA_SECRET = ",paysys@123"
-DELAY_SECONDS = 1.0  # gap between sends so TMS finishes evaluating each txn first
+DELAY_SECONDS = 2  # pace sends so we don't pile requests up on the gateway's single connection
+# The gateway may never send an HTTP response at all — treat it as fire-and-forget. We only
+# wait long enough to hand the request off; a timeout here is expected, not a failure signal.
+REQUEST_TIMEOUT = 2
 
 base = datetime(2026, 7, 2, 9, 5, 9)
 
@@ -114,7 +117,7 @@ def call(url_parameters, base_url=URL1):
     digest = sha256_hex(url_parameters + SHA_SECRET)
     url = f"{base_url}{escaped}/{digest}"
 
-    with urllib.request.urlopen(url) as resp:
+    with urllib.request.urlopen(url, timeout=REQUEST_TIMEOUT) as resp:
         status = resp.status
         body = resp.read().decode("utf-8")
         return status, body
@@ -128,20 +131,34 @@ payloads = [
 if __name__ == "__main__":
     results = []
     for i, src, dst, payload in payloads:
-        print(f"[{i}/{len(payloads)}] {src} -> {dst}")
+        print(f"[{i}/{len(payloads)}] {src} -> {dst}", flush=True)
+        start = time.monotonic()
         try:
             status, body = call(payload)
-            print(f"  HTTP {status}: {body.strip()[:200]}")
-            results.append((i, src, dst, status, None))
+            elapsed = time.monotonic() - start
+            print(f"  HTTP {status} in {elapsed:.2f}s: {body.strip()[:200]}", flush=True)
+            results.append((i, src, dst, "sent", None))
+        except TimeoutError:
+            # Expected — the gateway is fire-and-forget and may never send a response.
+            elapsed = time.monotonic() - start
+            print(f"  sent (no response after {elapsed:.2f}s, as expected)", flush=True)
+            results.append((i, src, dst, "sent", None))
         except Exception as exc:
-            print(f"  FAILED: {exc}")
+            elapsed = time.monotonic() - start
+            print(f"  FAILED after {elapsed:.2f}s: {exc}", flush=True)
             results.append((i, src, dst, None, str(exc)))
         time.sleep(DELAY_SECONDS)
 
     print("\n=========== SUMMARY ===========")
     for i, src, dst, status, err in results:
-        outcome = f"HTTP {status}" if err is None else f"ERROR: {err}"
+        outcome = status if err is None else f"ERROR: {err}"
         print(f"{i:>2}. {src} -> {dst}: {outcome}")
+
+    failed = [r for r in results if r[3] is None]
+    if failed:
+        print(f"\n{len(failed)} of {len(results)} transactions failed to send.")
+    else:
+        print(f"\nAll {len(results)} transactions sent. Check server-side logs to confirm processing.")
 
     failed = [r for r in results if r[3] != 200]
     if failed:

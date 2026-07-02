@@ -59,6 +59,16 @@ export class TmiService {
 
     this.logger.log(`Processing transaction ${transactionId}`);
 
+    if (!columns[Fields.RECEIVER_ID] || !columns[Fields.RECEIVER_ACCOUNT]) {
+      this.logger.warn(
+        `Transaction ${transactionId}: receiver account missing from parsed message — ` +
+        `pacs.008/pacs.002 will carry empty Cdtr/CdtrAcct ids (destination_account="${parsed.destination_account}", ` +
+        `custom_text_50_1="${parsed.custom_text_50_1}")`,
+      );
+    } else {
+      this.logger.log(`Transaction ${transactionId}: receiver account resolved to "${columns[Fields.RECEIVER_ACCOUNT]}"`);
+    }
+
     const pain001 = getPain001FromColumns(columns, this.tenantId);
     const pain013 = getPain013FromPain001(pain001);
     const pacs008 = getPacs008FromPain001(pain001);
@@ -99,14 +109,18 @@ export class TmiService {
     columns[Fields.TRANSACTION_TYPE]      = 'TRA';
     columns[Fields.PAYMENT_CURRENCY_CODE] = p.trs_curr_pan;
     columns[Fields.TOTAL_PAYMENT_AMOUNT]  = Number(p.trs_amount_pan).toFixed(2);
+    // destination_account (pos 910) is defined by the TMI1910 spec but this gateway's
+    // authorization-message template actually carries the beneficiary account in
+    // custom_text_50_1 (pos 982) — destination_account comes through blank in practice.
+    const receiverAccount = p.destination_account || p.custom_text_50_1;
     columns[Fields.SENDER_ID]             = p.trs_account;
     columns[Fields.SENDER_NAME]           = p.org_code;
-    columns[Fields.RECEIVER_ID]           = p.destination_account;
+    columns[Fields.RECEIVER_ID]           = receiverAccount;
     columns[Fields.RECEIVER_NAME]         = p.correspondent_name || p.secondary_org_code;
     columns[Fields.SENDER_AGENT_SPID]     = p.org_code;
     columns[Fields.RECEIVER_AGENT_SPID]   = p.secondary_org_code;
     columns[Fields.SENDER_ACCOUNT]        = p.trs_account;
-    columns[Fields.RECEIVER_ACCOUNT]      = p.destination_account;
+    columns[Fields.RECEIVER_ACCOUNT]      = receiverAccount;
     columns[Fields.REPORTING_CODE]        = p.trs_mer_code || p.trs_mcc || '';
     return columns;
   }
