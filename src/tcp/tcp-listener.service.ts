@@ -113,10 +113,10 @@ export class TcpListenerService implements OnModuleInit, OnModuleDestroy {
       return { complete, remaining: buffer.substring(offset) };
     }
 
-    // Newline-delimited framing: split on '\n'
+    // Newline-delimited framing: split on '\n', drop a trailing '\r' from CRLF lines
     const lines = buffer.split('\n');
     const remaining = lines.pop() ?? '';
-    complete.push(...lines.filter((l) => l.length > 0));
+    complete.push(...lines.map((l) => l.replace(/\r$/, '')).filter((l) => l.length > 0));
     return { complete, remaining };
   }
 
@@ -132,7 +132,7 @@ export class TcpListenerService implements OnModuleInit, OnModuleDestroy {
 
   private async dispatch(socket: net.Socket, raw: string): Promise<void> {
     try {
-      const result = await this.tmiService.processRawString(raw.trimEnd());
+      const result = await this.tmiService.processRawString(raw);
       this.safeWrite(socket, JSON.stringify(result) + '\n');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
