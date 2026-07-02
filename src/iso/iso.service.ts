@@ -162,9 +162,20 @@ export class IsoService {
       'transaction ID',
     );
 
-    const senderAccount = this.requireValue(p.trs_account, 'sender account');
+    const senderAccount = this.requireValue(
+      p.trs_account,
+      'sender account',
+    );
+
+    /*
+     * In the current TMI1910 feed, destination_account is blank and the
+     * receiver IBAN is supplied in custom_text_50_1.
+     */
     const receiverAccount = this.requireValue(
-      p.destination_account,
+      this.firstValue(
+        p.destination_account,
+        p.custom_text_50_1,
+      ),
       'receiver account',
     );
 
@@ -191,7 +202,13 @@ export class IsoService {
       'sender agent identifier',
     );
 
+    /*
+     * custom_text_10_1 contains the receiver bank code in the current feed
+     * (for example, ABL). For a Pakistani IBAN, extractIbanBankId() provides
+     * the four-character bank identifier (for example, ABPA).
+     */
     const receiverAgent = this.firstValue(
+      p.custom_text_10_1,
       p.iban_bank_id,
       this.extractIbanBankId(receiverAccount),
       p.secondary_org_code,
@@ -205,8 +222,7 @@ export class IsoService {
     // The organisation fields are used as controlled fallbacks until a proper
     // customer/account lookup is connected.
     const senderName = p.org_code || 'UNKNOWN SENDER';
-    const receiverName =
-      p.correspondent_name || p.secondary_org_code || 'UNKNOWN RECEIVER';
+    const receiverName = p.correspondent_name || p.secondary_org_code || 'UNKNOWN RECEIVER';
 
     if (!p.correspondent_name) {
       this.logger.warn(
@@ -332,11 +348,16 @@ export class IsoService {
     return values.find((value) => value?.trim())?.trim() ?? '';
   }
 
-  private requireValue(value: string, fieldName: string): string {
-    const normalized = value.trim();
+  private requireValue(
+    value: string | undefined | null,
+    fieldName: string,
+  ): string {
+    const normalized = value?.trim() ?? '';
+
     if (!normalized) {
       throw new Error(`Required ${fieldName} is missing`);
     }
+
     return normalized;
   }
 
