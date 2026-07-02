@@ -70,10 +70,10 @@ export class TmiService {
     // TMS schema rejects TenantId in pacs.008 body — strip before posting
     const { TenantId: _t, ...pacs008Body } = pacs008 as any;
 
-    const [pacs008Result, pacs002Result] = await Promise.all([
-      this.postToTms('pacs.008.001.10', pacs008Body),
-      this.postToTms('pacs.002.001.12', pacs002),
-    ]);
+    // TMS must ingest pacs.008 before it can match the corresponding pacs.002 —
+    // sending them concurrently races that dependency and pacs.002 gets a 500.
+    const pacs008Result = await this.postToTms('pacs.008.001.10', pacs008Body);
+    const pacs002Result = await this.postToTms('pacs.002.001.12', pacs002);
 
     const result: TransactionResult = {
       transactionId,
