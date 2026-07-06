@@ -92,7 +92,7 @@ let TcpListenerService = TcpListenerService_1 = class TcpListenerService {
         }
         const lines = buffer.split('\n');
         const remaining = lines.pop() ?? '';
-        complete.push(...lines.filter((l) => l.length > 0));
+        complete.push(...lines.map((l) => l.replace(/\r$/, '')).filter((l) => l.length > 0));
         return { complete, remaining };
     }
     safeWrite(socket, data) {
@@ -106,7 +106,7 @@ let TcpListenerService = TcpListenerService_1 = class TcpListenerService {
     }
     async dispatch(socket, raw) {
         try {
-            const result = await this.tmiService.processRawString(raw.trimEnd());
+            const result = await this.tmiService.processRawString(raw);
             this.safeWrite(socket, JSON.stringify(result) + '\n');
         }
         catch (err) {

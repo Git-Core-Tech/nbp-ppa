@@ -42,6 +42,14 @@ let TmiService = TmiService_1 = class TmiService {
         const columns = this.buildColumns(parsed);
         const transactionId = columns[message_generation_1.Fields.MESSAGE_ID];
         this.logger.log(`Processing transaction ${transactionId}`);
+        if (!columns[message_generation_1.Fields.RECEIVER_ID] || !columns[message_generation_1.Fields.RECEIVER_ACCOUNT]) {
+            this.logger.warn(`Transaction ${transactionId}: receiver account missing from parsed message — ` +
+                `pacs.008/pacs.002 will carry empty Cdtr/CdtrAcct ids (destination_account="${parsed.destination_account}", ` +
+                `custom_text_50_1="${parsed.custom_text_50_1}")`);
+        }
+        else {
+            this.logger.log(`Transaction ${transactionId}: receiver account resolved to "${columns[message_generation_1.Fields.RECEIVER_ACCOUNT]}"`);
+        }
         const pain001 = (0, message_generation_1.getPain001FromColumns)(columns, this.tenantId);
         const pain013 = (0, message_generation_1.getPain013FromPain001)(pain001);
         const pacs008 = (0, message_generation_1.getPacs008FromPain001)(pain001);
@@ -49,10 +57,8 @@ let TmiService = TmiService_1 = class TmiService {
         this.logger.log(`Generated pain.001 msgId=${pain001.CstmrCdtTrfInitn.GrpHdr.MsgId}`);
         this.logger.log(`Generated pain.013 msgId=${pain013.CdtrPmtActvtnReq.GrpHdr.MsgId}`);
         const { TenantId: _t, ...pacs008Body } = pacs008;
-        const [pacs008Result, pacs002Result] = await Promise.all([
-            this.postToTms('pacs.008.001.10', pacs008Body),
-            this.postToTms('pacs.002.001.12', pacs002),
-        ]);
+        const pacs008Result = await this.postToTms('pacs.008.001.10', pacs008Body);
+        const pacs002Result = await this.postToTms('pacs.002.001.12', pacs002);
         const result = {
             transactionId,
             pain001: true,
@@ -75,14 +81,15 @@ let TmiService = TmiService_1 = class TmiService {
         columns[message_generation_1.Fields.TRANSACTION_TYPE] = 'TRA';
         columns[message_generation_1.Fields.PAYMENT_CURRENCY_CODE] = p.trs_curr_pan;
         columns[message_generation_1.Fields.TOTAL_PAYMENT_AMOUNT] = Number(p.trs_amount_pan).toFixed(2);
+        const receiverAccount = p.destination_account || p.custom_text_50_1;
         columns[message_generation_1.Fields.SENDER_ID] = p.trs_account;
         columns[message_generation_1.Fields.SENDER_NAME] = p.org_code;
-        columns[message_generation_1.Fields.RECEIVER_ID] = p.destination_account;
+        columns[message_generation_1.Fields.RECEIVER_ID] = receiverAccount;
         columns[message_generation_1.Fields.RECEIVER_NAME] = p.correspondent_name || p.secondary_org_code;
         columns[message_generation_1.Fields.SENDER_AGENT_SPID] = p.org_code;
         columns[message_generation_1.Fields.RECEIVER_AGENT_SPID] = p.secondary_org_code;
         columns[message_generation_1.Fields.SENDER_ACCOUNT] = p.trs_account;
-        columns[message_generation_1.Fields.RECEIVER_ACCOUNT] = p.destination_account;
+        columns[message_generation_1.Fields.RECEIVER_ACCOUNT] = receiverAccount;
         columns[message_generation_1.Fields.REPORTING_CODE] = p.trs_mer_code || p.trs_mcc || '';
         return columns;
     }
