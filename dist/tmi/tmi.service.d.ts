@@ -15,8 +15,8 @@ export declare class TmiService {
     private readonly timezoneOffset;
     private readonly authHeader;
     constructor(configService: ConfigService);
-    processRawString(raw: string): Promise<string>;
-    processTransaction(parsed: ParsedTmi): Promise<TransactionResult>;
+    processRawString(raw: string, recvTs?: Date): Promise<string>;
+    processTransaction(parsed: ParsedTmi, recvTs?: Date): Promise<TransactionResult>;
     private buildColumns;
     private parseTimestamp;
     private postToTms;

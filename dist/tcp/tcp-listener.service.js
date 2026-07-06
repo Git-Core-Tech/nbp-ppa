@@ -46,18 +46,19 @@ let TcpListenerService = TcpListenerService_1 = class TcpListenerService {
         this.logger.log(`Client connected: ${remote}`);
         let buffer = '';
         socket.on('data', async (chunk) => {
+            const recvTs = new Date();
             this.logger.log(`Received ${chunk.length} bytes from ${remote}: ${JSON.stringify(chunk.toString('latin1'))}`);
             buffer += chunk.toString('latin1');
             const messages = this.drainMessages(buffer);
             buffer = messages.remaining;
             this.logger.log(`Complete messages: ${messages.complete.length}, buffered bytes: ${buffer.length}`);
             for (const msg of messages.complete) {
-                await this.dispatch(socket, msg);
+                await this.dispatch(socket, msg, recvTs);
             }
         });
         socket.on('end', () => {
             if (buffer.length > 0) {
-                this.dispatch(socket, buffer).catch(() => { });
+                this.dispatch(socket, buffer, new Date()).catch(() => { });
                 buffer = '';
             }
             this.logger.log(`Client disconnected: ${remote}`);
@@ -104,9 +105,9 @@ let TcpListenerService = TcpListenerService_1 = class TcpListenerService {
             }
         }
     }
-    async dispatch(socket, raw) {
+    async dispatch(socket, raw, recvTs) {
         try {
-            const result = await this.tmiService.processRawString(raw);
+            const result = await this.tmiService.processRawString(raw, recvTs);
             this.safeWrite(socket, JSON.stringify(result) + '\n');
         }
         catch (err) {

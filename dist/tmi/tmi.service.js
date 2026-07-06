@@ -27,7 +27,7 @@ let TmiService = TmiService_1 = class TmiService {
         const authToken = this.configService.get('authToken', '');
         this.authHeader = authenticated && authToken ? `Bearer ${authToken}` : undefined;
     }
-    async processRawString(raw) {
+    async processRawString(raw, recvTs = new Date()) {
         this.logger.log(`Complete message length: ${raw.length} bytes (expected ${tmi_parser_1.TMI_MESSAGE_LENGTH})`);
         if (raw.length !== tmi_parser_1.TMI_MESSAGE_LENGTH) {
             this.logger.warn(`Length mismatch — skipping`);
@@ -35,13 +35,14 @@ let TmiService = TmiService_1 = class TmiService {
         }
         const parsed = (0, tmi_parser_1.parseTmi1910)(raw);
         this.logger.log(`Parsed TMI: txnid=${parsed.trs_txnid_1} amount=${parsed.trs_amount_pan} ${parsed.trs_curr_pan} sender=${parsed.trs_account} receiver=${parsed.destination_account}`);
-        const result = await this.processTransaction(parsed);
+        const result = await this.processTransaction(parsed, recvTs);
         return JSON.stringify(result);
     }
-    async processTransaction(parsed) {
+    async processTransaction(parsed, recvTs = new Date()) {
         const columns = this.buildColumns(parsed);
         const transactionId = columns[message_generation_1.Fields.MESSAGE_ID];
         this.logger.log(`Processing transaction ${transactionId}`);
+        this.logger.log(`PERF_TIMING stage=ppa_recv txnId=${transactionId} ts=${recvTs.toISOString()}`);
         if (!columns[message_generation_1.Fields.RECEIVER_ID] || !columns[message_generation_1.Fields.RECEIVER_ACCOUNT]) {
             this.logger.warn(`Transaction ${transactionId}: receiver account missing from parsed message — ` +
                 `pacs.008/pacs.002 will carry empty Cdtr/CdtrAcct ids (destination_account="${parsed.destination_account}", ` +
@@ -57,8 +58,8 @@ let TmiService = TmiService_1 = class TmiService {
         this.logger.log(`Generated pain.001 msgId=${pain001.CstmrCdtTrfInitn.GrpHdr.MsgId}`);
         this.logger.log(`Generated pain.013 msgId=${pain013.CdtrPmtActvtnReq.GrpHdr.MsgId}`);
         const { TenantId: _t, ...pacs008Body } = pacs008;
-        const pacs008Result = await this.postToTms('pacs.008.001.10', pacs008Body);
-        const pacs002Result = await this.postToTms('pacs.002.001.12', pacs002);
+        const pacs008Result = await this.postToTms('pacs.008.001.10', pacs008Body, transactionId);
+        const pacs002Result = await this.postToTms('pacs.002.001.12', pacs002, transactionId);
         const result = {
             transactionId,
             pain001: true,
@@ -103,17 +104,23 @@ let TmiService = TmiService_1 = class TmiService {
         const ss = padded.slice(12, 14);
         return `${yyyy}-${MM}-${dd}T${HH}:${mm}:${ss}${this.timezoneOffset}`;
     }
-    async postToTms(txType, payload) {
+    async postToTms(txType, payload, transactionId) {
         const url = `${this.tmsEndpoint}/v1/evaluate/iso20022/${txType}`;
+        const callTs = new Date();
+        this.logger.log(`PERF_TIMING stage=ppa_tms_call txnId=${transactionId} txType=${txType} ts=${callTs.toISOString()}`);
         try {
             const headers = { 'Content-Type': 'application/json' };
             if (this.authHeader)
                 headers['Authorization'] = this.authHeader;
             const response = await axios_1.default.post(url, payload, { headers });
+            const replyTs = new Date();
+            this.logger.log(`PERF_TIMING stage=tms_reply txnId=${transactionId} txType=${txType} ts=${replyTs.toISOString()} status=${response.status}`);
             this.logger.log(`TMS ${txType} → HTTP ${response.status}`);
             return response.status === 200;
         }
         catch (err) {
+            const replyTs = new Date();
+            this.logger.log(`PERF_TIMING stage=tms_reply txnId=${transactionId} txType=${txType} ts=${replyTs.toISOString()} status=error`);
             const msg = err instanceof Error ? err.message : String(err);
             this.logger.error(`Failed to POST ${txType} to TMS: ${msg}`);
             return false;

@@ -38,7 +38,7 @@ export class TmiService {
     this.authHeader = authenticated && authToken ? `Bearer ${authToken}` : undefined;
   }
 
-  async processRawString(raw: string): Promise<string> {
+  async processRawString(raw: string, recvTs: Date = new Date()): Promise<string> {
     this.logger.log(`Complete message length: ${raw.length} bytes (expected ${TMI_MESSAGE_LENGTH})`);
 
     if (raw.length !== TMI_MESSAGE_LENGTH) {
@@ -49,15 +49,19 @@ export class TmiService {
     const parsed = parseTmi1910(raw);
     this.logger.log(`Parsed TMI: txnid=${parsed.trs_txnid_1} amount=${parsed.trs_amount_pan} ${parsed.trs_curr_pan} sender=${parsed.trs_account} receiver=${parsed.destination_account}`);
 
-    const result = await this.processTransaction(parsed);
+    const result = await this.processTransaction(parsed, recvTs);
     return JSON.stringify(result);
   }
 
-  async processTransaction(parsed: ParsedTmi): Promise<TransactionResult> {
+  async processTransaction(parsed: ParsedTmi, recvTs: Date = new Date()): Promise<TransactionResult> {
     const columns = this.buildColumns(parsed);
     const transactionId = columns[Fields.MESSAGE_ID];
 
     this.logger.log(`Processing transaction ${transactionId}`);
+    // Perf-test instrumentation: parseable stage timestamps for correlating PPA-side
+    // latency (PPA recv -> TMS call -> TMS reply) against Tazama's own evaluation
+    // write time, which the load-test harness reads back from Postgres separately.
+    this.logger.log(`PERF_TIMING stage=ppa_recv txnId=${transactionId} ts=${recvTs.toISOString()}`);
 
     if (!columns[Fields.RECEIVER_ID] || !columns[Fields.RECEIVER_ACCOUNT]) {
       this.logger.warn(
@@ -82,8 +86,8 @@ export class TmiService {
 
     // TMS must ingest pacs.008 before it can match the corresponding pacs.002 —
     // sending them concurrently races that dependency and pacs.002 gets a 500.
-    const pacs008Result = await this.postToTms('pacs.008.001.10', pacs008Body);
-    const pacs002Result = await this.postToTms('pacs.002.001.12', pacs002);
+    const pacs008Result = await this.postToTms('pacs.008.001.10', pacs008Body, transactionId);
+    const pacs002Result = await this.postToTms('pacs.002.001.12', pacs002, transactionId);
 
     const result: TransactionResult = {
       transactionId,
@@ -137,15 +141,21 @@ export class TmiService {
     return `${yyyy}-${MM}-${dd}T${HH}:${mm}:${ss}${this.timezoneOffset}`;
   }
 
-  private async postToTms(txType: string, payload: unknown): Promise<boolean> {
+  private async postToTms(txType: string, payload: unknown, transactionId: string): Promise<boolean> {
     const url = `${this.tmsEndpoint}/v1/evaluate/iso20022/${txType}`;
+    const callTs = new Date();
+    this.logger.log(`PERF_TIMING stage=ppa_tms_call txnId=${transactionId} txType=${txType} ts=${callTs.toISOString()}`);
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (this.authHeader) headers['Authorization'] = this.authHeader;
       const response = await axios.post(url, payload, { headers });
+      const replyTs = new Date();
+      this.logger.log(`PERF_TIMING stage=tms_reply txnId=${transactionId} txType=${txType} ts=${replyTs.toISOString()} status=${response.status}`);
       this.logger.log(`TMS ${txType} → HTTP ${response.status}`);
       return response.status === 200;
     } catch (err) {
+      const replyTs = new Date();
+      this.logger.log(`PERF_TIMING stage=tms_reply txnId=${transactionId} txType=${txType} ts=${replyTs.toISOString()} status=error`);
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Failed to POST ${txType} to TMS: ${msg}`);
       return false;

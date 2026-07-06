@@ -51,6 +51,7 @@ export class TcpListenerService implements OnModuleInit, OnModuleDestroy {
     let buffer = '';
 
     socket.on('data', async (chunk: Buffer) => {
+      const recvTs = new Date();
       this.logger.log(
         `Received ${chunk.length} bytes from ${remote}: ${JSON.stringify(chunk.toString('latin1'))}`,
       );
@@ -65,14 +66,14 @@ export class TcpListenerService implements OnModuleInit, OnModuleDestroy {
       );
 
       for (const msg of messages.complete) {
-        await this.dispatch(socket, msg);
+        await this.dispatch(socket, msg, recvTs);
       }
     });
 
     socket.on('end', () => {
       // Process any remaining buffered bytes when client closes write side
       if (buffer.length > 0) {
-        this.dispatch(socket, buffer).catch(() => { });
+        this.dispatch(socket, buffer, new Date()).catch(() => { });
         buffer = '';
       }
       this.logger.log(`Client disconnected: ${remote}`);
@@ -130,9 +131,9 @@ export class TcpListenerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async dispatch(socket: net.Socket, raw: string): Promise<void> {
+  private async dispatch(socket: net.Socket, raw: string, recvTs: Date): Promise<void> {
     try {
-      const result = await this.tmiService.processRawString(raw);
+      const result = await this.tmiService.processRawString(raw, recvTs);
       this.safeWrite(socket, JSON.stringify(result) + '\n');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
