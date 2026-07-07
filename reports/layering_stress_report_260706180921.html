@@ -1,0 +1,126 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Layering Stress Test -- Performance Report (260706180921)</title>
+<style>
+  .rp {
+    --surface-1: #fcfcfb; --page: #f9f9f7; --text-primary: #0b0b0b; --text-secondary: #52514e;
+    --text-muted: #898781; --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+    --series-1: #2a78d6; --series-2: #1baf7a; --series-3: #eda100; --series-5: #4a3aa7; --series-6: #e34948;
+    --status-good: #0ca30c; --status-warning: #fab219; --status-critical: #d03b3b;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text-primary);
+    background: var(--page); line-height: 1.5;
+  }
+  @media (prefers-color-scheme: dark) {
+    .rp {
+      --surface-1: #1a1a19; --page: #0d0d0d; --text-primary: #ffffff; --text-secondary: #c3c2b7;
+      --text-muted: #898781; --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+      --series-1: #3987e5; --series-2: #199e70; --series-3: #c98500; --series-5: #9085e9; --series-6: #e66767;
+    }
+  }
+  :root[data-theme="dark"] .rp {
+    --surface-1: #1a1a19; --page: #0d0d0d; --text-primary: #ffffff; --text-secondary: #c3c2b7;
+    --text-muted: #898781; --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5; --series-2: #199e70; --series-3: #c98500; --series-5: #9085e9; --series-6: #e66767;
+  }
+  :root[data-theme="light"] .rp {
+    --surface-1: #fcfcfb; --page: #f9f9f7; --text-primary: #0b0b0b; --text-secondary: #52514e;
+    --text-muted: #898781; --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+    --series-1: #2a78d6; --series-2: #1baf7a; --series-3: #eda100; --series-5: #4a3aa7; --series-6: #e34948;
+  }
+  .rp * { box-sizing: border-box; }
+  .rp-wrap { max-width: 1080px; margin: 0 auto; padding: 40px 24px 96px; }
+  .rp h1 { font-size: 26px; font-weight: 650; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .rp .subtitle { color: var(--text-secondary); font-size: 14px; margin: 0 0 32px; }
+  .rp h2 { font-size: 18px; font-weight: 650; margin: 48px 0 4px; }
+  .rp h2 .num { color: var(--text-muted); font-weight: 500; margin-right: 8px; }
+  .rp .section-sub { color: var(--text-secondary); font-size: 13.5px; margin: 0 0 20px; max-width: 720px; }
+  .rp code { background: var(--grid); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+  .rp .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; }
+  .rp .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 8px; }
+  .rp .stat-tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+  .rp .stat-tile .label { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+  .rp .stat-tile .value { font-size: 26px; font-weight: 650; letter-spacing: -0.01em; }
+  .rp .stat-tile .value.critical { color: var(--status-critical); }
+  .rp .stat-tile .value.good { color: var(--status-good); }
+  .rp .stat-tile .delta { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .rp .callout { border-radius: 10px; padding: 14px 16px; font-size: 13.5px; margin: 16px 0; border: 1px solid; }
+  .rp .callout.critical { background: color-mix(in srgb, var(--status-critical) 10%, var(--surface-1)); border-color: color-mix(in srgb, var(--status-critical) 35%, transparent); }
+  .rp .callout.good { background: color-mix(in srgb, var(--status-good) 10%, var(--surface-1)); border-color: color-mix(in srgb, var(--status-good) 35%, transparent); }
+  .rp .callout .tag { font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; display: block; margin-bottom: 4px; }
+  .rp .callout.critical .tag { color: var(--status-critical); }
+  .rp .callout.good .tag { color: var(--status-good); }
+  .rp table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
+  .rp td { padding: 9px 10px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  .rp td.strong { color: var(--text-primary); font-weight: 600; }
+  .rp tr:last-child td { border-bottom: none; }
+  .rp .num { text-align: right; }
+  .rp .bar-cell { position: relative; }
+  .rp .bar-cell .track { position: absolute; inset: 4px 10px; background: var(--grid); border-radius: 4px; z-index: 0; }
+  .rp .bar-cell .fill { position: absolute; top: 4px; bottom: 4px; left: 10px; border-radius: 4px; z-index: 1; }
+  .rp .bar-cell .label { position: relative; z-index: 2; padding-left: 4px; }
+  .rp footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted); }
+  @media (max-width: 720px) { .rp .stat-row { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<div class="rp">
+<div class="rp-wrap">
+
+  <h1>NBP Layering Stress Test &mdash; Performance Report</h1>
+  <p class="subtitle">tapered run &middot; 5000 txns (2 ring(s) + noise) &rarr; http://10.0.110.7:7033/nbpl/queueforwarding/ &middot; run 260706180921</p>
+
+  <div class="stat-row">
+    <div class="stat-tile"><div class="label">Sent</div><div class="value ">5000/5000</div><div class="delta"></div></div>
+    <div class="stat-tile"><div class="label">TPS (achieved)</div><div class="value ">8.27</div><div class="delta">wall time 604.9s</div></div>
+    <div class="stat-tile"><div class="label">TPS (target)</div><div class="value ">8.33</div><div class="delta">paced by --duration/--count</div></div>
+    <div class="stat-tile"><div class="label">Responded 200</div><div class="value good">0</div><div class="delta"></div></div>
+  </div>
+  <div class="stat-row">
+    <div class="stat-tile"><div class="label">Timed out</div><div class="value ">4856</div><div class="delta"></div></div>
+    <div class="stat-tile"><div class="label">Hard failures</div><div class="value critical">144</div><div class="delta"></div></div>
+    <div class="stat-tile"><div class="label">Latency p50</div><div class="value ">5033 ms</div><div class="delta"></div></div>
+    <div class="stat-tile"><div class="label">Latency p95</div><div class="value ">5054 ms</div><div class="delta"></div></div>
+  </div>
+
+  <div class="callout critical"><span class="tag">Hard failures detected</span>144 of 5000 requests hit a hard failure (connection refused / DNS / etc.) &mdash; see the console log for per-request errors. Timeouts are expected for this fire-and-forget gateway and are not counted here.</div>
+
+  <h2><span class="num">1</span>Run configuration</h2>
+  <div class="card"><table><tbody>
+    <tr><td class="strong">Mode</td><td class="num">10 min tapered</td></tr>
+    <tr><td class="strong">Concurrency</td><td class="num">50</td></tr>
+    <tr><td class="strong">Rings embedded</td><td class="num">2</td></tr>
+    <tr><td class="strong">Seed</td><td class="num">random</td></tr>
+    <tr><td class="strong">Virtual narrative window</td><td class="num">2026-06-06 &rarr; 2026-07-05</td></tr>
+    <tr><td class="strong">Target endpoint</td><td class="num">http://10.0.110.7:7033/nbpl/queueforwarding/</td></tr>
+    <tr><td class="strong">Started</td><td class="num">2026-07-06T18:09:21</td></tr>
+    <tr><td class="strong">Finished</td><td class="num">2026-07-06T18:19:26</td></tr>
+  </tbody></table></div>
+
+  <h2><span class="num">2</span>Dataset breakdown</h2>
+  <p class="section-sub">Signal (layering rings) vs. background noise transactions dispatched this run.</p>
+  <div class="card"><table><tbody>
+    <tr><td class="strong">noise</td><td class="num bar-cell" style="min-width:160px;"><span class="track" style="right:0.0%"></span><span class="fill" style="width:100.0%; background:var(--series-1); opacity:0.35;"></span><span class="label">4934 (98.7%)</span></td></tr>
+<tr><td class="strong">ring1</td><td class="num bar-cell" style="min-width:160px;"><span class="track" style="right:99.3%"></span><span class="fill" style="width:0.7%; background:var(--status-critical); opacity:0.35;"></span><span class="label">33 (0.7%)</span></td></tr>
+<tr><td class="strong">ring2</td><td class="num bar-cell" style="min-width:160px;"><span class="track" style="right:99.3%"></span><span class="fill" style="width:0.7%; background:var(--status-critical); opacity:0.35;"></span><span class="label">33 (0.7%)</span></td></tr>
+  </tbody></table></div>
+
+  <h2><span class="num">3</span>Latency distribution</h2>
+  <p class="section-sub">Client-observed round-trip latency to the queueforwarding gateway (fire-and-forget --
+  this is request latency, not downstream fraud-evaluation latency).</p>
+  <div class="card"><table><tbody>
+    <tr><td class="strong">MIN</td><td class="num bar-cell" style="min-width:160px;"><span class="track" style="right:45.6%"></span><span class="fill" style="width:54.4%; background:var(--series-1); opacity:0.35;"></span><span class="label">5001 ms</span></td></tr>
+<tr><td class="strong">P50</td><td class="num bar-cell" style="min-width:160px;"><span class="track" style="right:45.3%"></span><span class="fill" style="width:54.7%; background:var(--series-1); opacity:0.35;"></span><span class="label">5033 ms</span></td></tr>
+<tr><td class="strong">MEAN</td><td class="num bar-cell" style="min-width:160px;"><span class="track" style="right:45.2%"></span><span class="fill" style="width:54.8%; background:var(--series-1); opacity:0.35;"></span><span class="label">5041 ms</span></td></tr>
+<tr><td class="strong">P95</td><td class="num bar-cell" style="min-width:160px;"><span class="track" style="right:45.1%"></span><span class="fill" style="width:54.9%; background:var(--series-1); opacity:0.35;"></span><span class="label">5054 ms</span></td></tr>
+<tr><td class="strong">P99</td><td class="num bar-cell" style="min-width:160px;"><span class="track" style="right:44.6%"></span><span class="fill" style="width:55.4%; background:var(--status-critical); opacity:0.35;"></span><span class="label">5101 ms</span></td></tr>
+<tr><td class="strong">MAX</td><td class="num bar-cell" style="min-width:160px;"><span class="track" style="right:0.0%"></span><span class="fill" style="width:100.0%; background:var(--status-critical); opacity:0.35;"></span><span class="label">9201 ms</span></td></tr>
+  </tbody></table></div>
+
+  <footer>Generated 2026-07-06T18:19:26 &middot; script: layering_stress_scenario.py &middot; run tag 260706180921</footer>
+
+</div>
+</div>
+</body>
+</html>
