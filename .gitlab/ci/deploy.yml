@@ -1,0 +1,66 @@
+deploy_production:
+  stage: deploy
+
+  environment:
+    name: production
+    deployment_tier: production
+
+  # Prevent two production deployments from running at the same time.
+  resource_group: nbp-ppa-production
+
+  timeout: 10m
+  interruptible: false
+
+  script:
+    - set -eu
+
+    # Use the exact image created by the build job for this commit.
+    - export APP_IMAGE="nbp-ppa:${CI_COMMIT_SHA}"
+
+    - echo "Deploying image ${APP_IMAGE}"
+
+    # Confirm the production environment file exists on the server.
+    - |
+      if [ ! -r "$APP_ENV_FILE" ]; then
+        echo "ERROR: Cannot read production environment file: $APP_ENV_FILE"
+        exit 1
+      fi
+
+    # Confirm that the build stage created the image.
+    - |
+      if ! docker image inspect "$APP_IMAGE" >/dev/null 2>&1; then
+        echo "ERROR: Docker image does not exist: $APP_IMAGE"
+        exit 1
+      fi
+
+    # Validate docker-compose.yaml before changing the running container.
+    - docker compose -f "$COMPOSE_FILE" config --quiet
+
+    # Start the image built by this pipeline.
+    # APP_ENV_FILE points to /opt/nbp-ppa/.env on the production server.
+    - >
+      docker compose -f "$COMPOSE_FILE" up
+      --detach
+      --no-build
+      --force-recreate
+      --remove-orphans
+      --wait
+      --wait-timeout 90
+      nbp-ppa
+
+    # Show the final deployment state.
+    - docker compose -f "$COMPOSE_FILE" ps
+    - docker inspect nbp-ppa --format 'status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}not-configured{{end}}'
+
+    - echo "Production deployment completed successfully"
+
+  after_script:
+    # Show logs if deployment fails.
+    - |
+      if [ "${CI_JOB_STATUS:-failed}" != "success" ]; then
+        echo "Deployment failed. Showing container logs:"
+        docker compose -f "${COMPOSE_FILE:-docker-compose.yaml}" logs \
+          --no-color \
+          --tail=200 \
+          nbp-ppa || true
+      fi

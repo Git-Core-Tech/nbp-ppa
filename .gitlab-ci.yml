@@ -1,0 +1,33 @@
+stages:
+  - test
+  - build
+  - deploy
+
+default:
+  tags:
+    - production-docker
+
+variables:
+  # Give this Compose deployment a consistent project name.
+  COMPOSE_PROJECT_NAME: "nbp-ppa-production"
+
+  # Compose file in the repository root.
+  COMPOSE_FILE: "docker-compose.yaml"
+
+  # Production environment file already stored on the server.
+  APP_ENV_FILE: "/opt/nbp-ppa/.env"
+
+  # Enable Docker BuildKit for the GH_TOKEN secret mount.
+  DOCKER_BUILDKIT: "1"
+
+# Create a pipeline only when code is pushed or merged into the
+# GitLab project's default branch, normally main.
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - when: never
+
+include:
+  - local: ".gitlab/ci/test.yml"
+  - local: ".gitlab/ci/build.yml"
+  - local: ".gitlab/ci/deploy.yml"

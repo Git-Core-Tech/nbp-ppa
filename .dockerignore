@@ -1,0 +1,16 @@
+node_modules
+dist
+
+.git
+.gitignore
+
+.env
+.env.*
+!.env.example
+
+reports
+__pycache__
+*.pyc
+
+*.log
+npm-debug.log*

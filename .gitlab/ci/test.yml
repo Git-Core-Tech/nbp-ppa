@@ -1,0 +1,29 @@
+test_application:
+  stage: test
+
+  script:
+    - echo "Starting application tests"
+
+    # The private npm packages require GH_TOKEN.
+    - |
+      if [ -z "${GH_TOKEN:-}" ]; then
+        echo "ERROR: GH_TOKEN is not configured"
+        exit 1
+      fi
+
+    # Run tests inside Node 24, matching the Dockerfile Node version.
+    - |
+      docker run --rm \
+        --user "$(id -u):$(id -g)" \
+        --env HOME=/tmp \
+        --env GH_TOKEN \
+        --volume "$CI_PROJECT_DIR:/app" \
+        --workdir /app \
+        node:24-bookworm-slim \
+        sh -c 'npm ci && npm test -- --runInBand --passWithNoTests'
+
+    - echo "Application tests completed successfully"
+
+  after_script:
+    # Remove packages created in the GitLab checkout.
+    - rm -rf node_modules

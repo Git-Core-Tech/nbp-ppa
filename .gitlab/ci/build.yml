@@ -1,0 +1,37 @@
+build_application_image:
+  stage: build
+
+  timeout: 15m
+
+  script:
+    - set -eu
+
+    - echo "Starting Docker image build for commit ${CI_COMMIT_SHORT_SHA}"
+
+    # Confirm that the GitHub token is available.
+    - |
+      if [ -z "${GH_TOKEN:-}" ]; then
+        echo "ERROR: GH_TOKEN is not configured"
+        exit 1
+      fi
+
+    # Each commit receives its own Docker image tag.
+    - export APP_IMAGE="nbp-ppa:${CI_COMMIT_SHA}"
+
+    # Confirm that the runner can access Docker.
+    - docker info >/dev/null
+
+    # Build the image.
+    # GH_TOKEN is mounted temporarily as a BuildKit secret.
+    - |
+      docker build \
+        --pull \
+        --file Dockerfile \
+        --secret id=gh_token,env=GH_TOKEN \
+        --tag "$APP_IMAGE" \
+        .
+
+    # Confirm that the image was created successfully.
+    - docker image inspect "$APP_IMAGE" >/dev/null
+
+    - echo "Successfully built image ${APP_IMAGE}"

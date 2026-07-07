@@ -1,0 +1,49 @@
+services:
+  nbp-ppa:
+    container_name: nbp-ppa
+    image: ${APP_IMAGE:-nbp-ppa:local}
+
+    build:
+      context: .
+      dockerfile: Dockerfile
+      secrets:
+        - gh_token
+
+    env_file:
+      - ${APP_ENV_FILE:-.env}
+
+    environment:
+      TCP_HOST: 0.0.0.0
+      TMS_ENDPOINT: http://host.docker.internal:5000
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    ports:
+      - "3004:3004"
+
+    restart: unless-stopped
+    init: true
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const net=require('node:net');const p=Number(process.env.TCP_PORT||3004);const s=net.createConnection({host:'127.0.0.1',port:p},()=>{s.end();process.exit(0)});s.setTimeout(1500,()=>{s.destroy();process.exit(1)});s.on('error',()=>process.exit(1));"
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+secrets:
+  gh_token:
+    environment: GH_TOKEN
