@@ -8,6 +8,7 @@ transactions in the same order the scenario implies.
 """
 
 import hashlib
+import socket
 import time
 import urllib.parse
 import urllib.request
@@ -138,7 +139,9 @@ if __name__ == "__main__":
             elapsed = time.monotonic() - start
             print(f"  HTTP {status} in {elapsed:.2f}s: {body.strip()[:200]}", flush=True)
             results.append((i, src, dst, "sent", None))
-        except TimeoutError:
+        except (socket.timeout, TimeoutError):
+            # socket.timeout == TimeoutError only from Python 3.10 onward; catch both
+            # explicitly so this works on older interpreters too (this host runs 3.6).
             # Expected — the gateway is fire-and-forget and may never send a response.
             elapsed = time.monotonic() - start
             print(f"  sent (no response after {elapsed:.2f}s, as expected)", flush=True)

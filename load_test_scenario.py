@@ -24,6 +24,7 @@ Usage:
 import argparse
 import hashlib
 import random
+import socket
 import threading
 import time
 import urllib.parse
@@ -160,7 +161,9 @@ def send_one(i, txn, stats):
     try:
         call(payload)
         stats.record("ok", time.monotonic() - start)
-    except TimeoutError:
+    except (socket.timeout, TimeoutError):
+        # socket.timeout == TimeoutError only from Python 3.10 onward; catch both
+        # explicitly so this works on older interpreters too (this host runs 3.6).
         stats.record("timeout", time.monotonic() - start)
     except Exception as exc:
         stats.record("failed", time.monotonic() - start)
