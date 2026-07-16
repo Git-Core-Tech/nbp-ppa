@@ -32,6 +32,14 @@ function adjustInMilliseconds(isoDateString: string, milliseconds: number): stri
   return date.toISOString();
 }
 
+// BirthDt is typed as `Date`, but a real Date instance serializes through
+// JSON (Date.prototype.toJSON) as a full ISO datetime ("1968-02-01T00:00:00.000Z").
+// Downstream rules (e.g. rule-028) match it against a strict YYYY-MM-DD regex,
+// so the plain date string has to survive serialization unchanged.
+function dateOnly(isoDateString: string): Date {
+  return isoDateString as unknown as Date;
+}
+
 function splitName(fullName: string): { first: string; last: string } {
   const parts = fullName.split(' ');
   return { first: parts[0] ?? '', last: parts[1] ?? '' };
@@ -52,7 +60,7 @@ export const getPain001FromColumns = (columns: string[], tenantId: string): Pain
           Id: {
             PrvtId: {
               DtAndPlcOfBirth: {
-                BirthDt: new Date('1968-02-01'),
+                BirthDt: dateOnly('1968-02-01'),
                 CityOfBirth: 'Unknown',
                 CtryOfBirth: 'ZZ',
               },
@@ -87,7 +95,7 @@ export const getPain001FromColumns = (columns: string[], tenantId: string): Pain
           Id: {
             PrvtId: {
               DtAndPlcOfBirth: {
-                BirthDt: new Date('1968-02-01'),
+                BirthDt: dateOnly('1968-02-01'),
                 CityOfBirth: 'Unknown',
                 CtryOfBirth: 'ZZ',
               },
@@ -147,7 +155,7 @@ export const getPain001FromColumns = (columns: string[], tenantId: string): Pain
             Id: {
               PrvtId: {
                 DtAndPlcOfBirth: {
-                  BirthDt: new Date('1968-02-01'),
+                  BirthDt: dateOnly('1968-02-01'),
                   CityOfBirth: 'Unknown',
                   CtryOfBirth: 'ZZ',
                 },
