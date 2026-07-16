@@ -498,7 +498,11 @@ export const getPacs008FromPain001 = (pain001: Pain001): Pacs008 => {
         Envlp: {
           Doc: {
             Xprtn: pain001.CstmrCdtTrfInitn.PmtInf.CdtTrfTxInf.SplmtryData.Envlp.Doc.Xprtn,
-            InitgPty: { Glctn: { Lat: '', Long: '' } },
+            // TMI1910 carries no geolocation field (see tmi-parser.ts), so there is no real
+            // Lat/Long to populate here. rule-074 casts this straight to `double precision` in
+            // SQL, so it must be a valid numeric string rather than '' — '0'/'0' avoids the cast
+            // error; it also means the geo-velocity check never flags real distance for this data.
+            InitgPty: { Glctn: { Lat: '0', Long: '0' } },
           },
         },
       },
